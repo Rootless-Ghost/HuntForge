@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Generate Playbook{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <span class="title-icon">⚡</span>
+        Threat Hunt Playbook Generator
+    </h1>
+    <p class="page-subtitle">Enter a MITRE ATT&CK technique ID to generate a complete, structured hunt playbook.</p>
+</div>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<!-- Generator form -->
+<div class="card generator-card">
+    <div class="card-header">
+        <h2 class="card-title">Configure Hunt</h2>
+    </div>
+    <div class="card-body">
+        <div class="form-grid">
+
+            <!-- Technique search -->
+            <div class="form-group form-group--full">
+                <label class="form-label">Technique ID or Name</label>
+                <div class="technique-search-wrapper">
+                    <input
+                        type="text"
+                        id="techniqueInput"
+                        class="form-input technique-input"
+                        placeholder="e.g. T1059.001 or PowerShell"
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
+                    <div id="techniqueDropdown" class="technique-dropdown hidden"></div>
+                </div>
+                <div id="techniqueInfo" class="technique-info hidden">
+                    <span class="tech-badge" id="techTactic"></span>
+                    <span id="techName" class="tech-name"></span>
+                    <span id="techScore" class="tech-score"></span>
+                </div>
+            </div>
+
+            <!-- Environment -->
+            <div class="form-group">
+                <label class="form-label">Environment</label>
+                <div class="env-selector">
+                    <label class="env-option">
+                        <input type="radio" name="environment" value="windows" checked>
+                        <span class="env-btn">
+                            <span class="env-icon">🪟</span>
+                            Windows
+                        </span>
+                    </label>
+                    <label class="env-option">
+                        <input type="radio" name="environment" value="linux">
+                        <span class="env-btn">
+                            <span class="env-icon">🐧</span>
+                            Linux
+                        </span>
+                    </label>
+                    <label class="env-option">
+                        <input type="radio" name="environment" value="cloud">
+                        <span class="env-btn">
+                            <span class="env-icon">☁️</span>
+                            Cloud
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Log sources -->
+            <div class="form-group">
+                <label class="form-label">Available Log Sources</label>
+                <div class="source-checkboxes">
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="sysmon" checked>
+                        <span class="check-label">Sysmon</span>
+                    </label>
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="wazuh" checked>
+                        <span class="check-label">Wazuh</span>
+                    </label>
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="splunk">
+                        <span class="check-label">Splunk</span>
+                    </label>
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="defender">
+                        <span class="check-label">Defender</span>
+                    </label>
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="crowdstrike">
+                        <span class="check-label">CrowdStrike</span>
+                    </label>
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="sentinel">
+                        <span class="check-label">Sentinel</span>
+                    </label>
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="elastic">
+                        <span class="check-label">Elastic</span>
+                    </label>
+                    <label class="source-check">
+                        <input type="checkbox" name="log_sources" value="windows_event_log">
+                        <span class="check-label">WinEventLog</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Output format -->
+            <div class="form-group">
+                <label class="form-label">Output Format</label>
+                <select id="outputFormat" class="form-select">
+                    <option value="json">JSON (structured)</option>
+                    <option value="markdown">Markdown (human-readable)</option>
+                </select>
+            </div>
+
+        </div>
+
+        <div class="form-actions">
+            <button id="generateBtn" class="btn btn-primary btn-generate" disabled>
+                <span class="btn-icon">⚡</span>
+                Generate Playbook
+            </button>
+            <div id="generateStatus" class="generate-status hidden">
+                <div class="spinner"></div>
+                <span>Generating playbook…</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Playbook output -->
+<div id="playbookOutput" class="hidden">
+
+    <!-- Playbook header -->
+    <div class="playbook-header card">
+        <div class="playbook-meta">
+            <div class="playbook-technique-id" id="pbTechId"></div>
+            <div class="playbook-technique-name" id="pbTechName"></div>
+            <div class="playbook-badges">
+                <span class="badge badge-tactic" id="pbTactic"></span>
+                <span class="confidence-badge" id="pbConfidence"></span>
+            </div>
+        </div>
+        <div class="playbook-actions">
+            <button class="btn btn-sm btn-secondary" id="exportJsonBtn">
+                ⬇ Export JSON
+            </button>
+            <button class="btn btn-sm btn-secondary" id="exportMdBtn">
+                ⬇ Export Markdown
+            </button>
+            <a id="viewFullBtn" href="#" class="btn btn-sm btn-outline">
+                🔗 Full View
+            </a>
+        </div>
+    </div>
+
+    <!-- Confidence meter -->
+    <div class="confidence-card card">
+        <div class="confidence-row">
+            <div class="confidence-label">
+                <span>Detection Confidence</span>
+                <span class="confidence-value" id="confValue"></span>
+            </div>
+            <div class="confidence-bar-wrap">
+                <div class="confidence-bar" id="confBar"></div>
+            </div>
+            <div class="confidence-meta">
+                <span id="confCoverage" class="conf-coverage"></span>
+                <span id="confLabel" class="conf-label"></span>
+            </div>
+        </div>
+        <div class="confidence-rationale" id="confRationale"></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tab-container">
+        <div class="tab-bar">
+            <button class="tab-btn active" data-tab="overview">📋 Overview</button>
+            <button class="tab-btn" data-tab="queries">🔍 Queries</button>
+            <button class="tab-btn" data-tab="artifacts">🎯 Artifacts</button>
+            <button class="tab-btn" data-tab="mitre">🧭 MITRE Context</button>
+            <button class="tab-btn" data-tab="logsources">📡 Log Sources</button>
+        </div>
+
+        <!-- Overview tab -->
+        <div class="tab-content active" id="tab-overview">
+            <div class="tab-section">
+                <h3 class="section-title">Description</h3>
+                <p id="pbDescription" class="text-body"></p>
+            </div>
+            <div class="tab-section">
+                <h3 class="section-title">Hunt Hypothesis</h3>
+                <div class="hypothesis-block" id="pbHypothesis"></div>
+            </div>
+        </div>
+
+        <!-- Queries tab -->
+        <div class="tab-content" id="tab-queries">
+            <div class="query-grid">
+
+                <div class="query-block">
+                    <div class="query-header">
+                        <span class="query-badge splunk">Splunk SPL</span>
+                        <button class="copy-btn" data-target="splunkQuery">Copy</button>
+                    </div>
+                    <pre class="query-code" id="splunkQuery"></pre>
+                </div>
+
+                <div class="query-block">
+                    <div class="query-header">
+                        <span class="query-badge wazuh">Wazuh / Elasticsearch</span>
+                        <button class="copy-btn" data-target="wazuhQuery">Copy</button>
+                    </div>
+                    <pre class="query-code" id="wazuhQuery"></pre>
+                </div>
+
+                <div class="query-block">
+                    <div class="query-header">
+                        <span class="query-badge sigma">Sigma YAML</span>
+                        <button class="copy-btn" data-target="sigmaQuery">Copy</button>
+                    </div>
+                    <pre class="query-code" id="sigmaQuery"></pre>
+                </div>
+
+                <div class="query-block">
+                    <div class="query-header">
+                        <span class="query-badge kql">KQL (Sentinel)</span>
+                        <button class="copy-btn" data-target="kqlQuery">Copy</button>
+                    </div>
+                    <pre class="query-code" id="kqlQuery"></pre>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Artifacts tab -->
+        <div class="tab-content" id="tab-artifacts">
+            <div class="artifacts-grid">
+
+                <div class="artifact-card">
+                    <h4 class="artifact-title">Windows Event IDs</h4>
+                    <div id="artEventIds" class="artifact-list"></div>
+                </div>
+
+                <div class="artifact-card">
+                    <h4 class="artifact-title">Key Field Names</h4>
+                    <div id="artFieldNames" class="artifact-list"></div>
+                </div>
+
+                <div class="artifact-card">
+                    <h4 class="artifact-title">Processes of Interest</h4>
+                    <div id="artProcesses" class="artifact-list"></div>
+                </div>
+
+                <div class="artifact-card">
+                    <h4 class="artifact-title">Command Patterns</h4>
+                    <div id="artCmdPatterns" class="artifact-list"></div>
+                </div>
+
+                <div class="artifact-card">
+                    <h4 class="artifact-title">Registry Keys</h4>
+                    <div id="artRegKeys" class="artifact-list"></div>
+                </div>
+
+                <div class="artifact-card">
+                    <h4 class="artifact-title">Network Ports</h4>
+                    <div id="artNetPorts" class="artifact-list"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- MITRE Context tab -->
+        <div class="tab-content" id="tab-mitre">
+            <div class="mitre-layout">
+
+                <div class="mitre-card">
+                    <h4 class="mitre-section-title">Tactic</h4>
+                    <div id="mitreInfo" class="mitre-info"></div>
+                </div>
+
+                <div class="mitre-card">
+                    <h4 class="mitre-section-title">Sub-Techniques</h4>
+                    <div id="mitreSubTechs" class="mitre-list"></div>
+                </div>
+
+                <div class="mitre-card">
+                    <h4 class="mitre-section-title">Related Techniques</h4>
+                    <div id="mitreRelated" class="mitre-list"></div>
+                </div>
+
+                <div class="mitre-card mitre-card--full">
+                    <h4 class="mitre-section-title">Detection Notes</h4>
+                    <div id="mitreDetectionNotes" class="detection-notes"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Log sources tab -->
+        <div class="tab-content" id="tab-logsources">
+            <div id="logSourcesList" class="logsources-list"></div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Quick search techniques section -->
+<div id="techniqueGrid" class="technique-grid-section hidden">
+    <h3 class="section-title">Available Techniques</h3>
+    <div id="techniqueGridItems" class="technique-grid"></div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const TACTIC_FROM_URL = new URLSearchParams(window.location.search).get('tactic') || '';
+if (TACTIC_FROM_URL) {
+    loadTechniqueGrid(TACTIC_FROM_URL);
+}
+</script>
+{% endblock %}

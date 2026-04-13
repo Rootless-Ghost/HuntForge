@@ -1,0 +1,34 @@
+# HuntForge configuration
+# =================================
+# Copy this file to config.yaml and adjust values.
+# HuntForge operates fully offline — no internet required.
+
+# -----------------------------------------------------------------------
+# Server
+# -----------------------------------------------------------------------
+port: 5007
+
+# -----------------------------------------------------------------------
+# Database
+# -----------------------------------------------------------------------
+db_path: ./huntforge.db
+
+# -----------------------------------------------------------------------
+# Output directory (for exported playbooks)
+# -----------------------------------------------------------------------
+output_dir: ./output
+
+# -----------------------------------------------------------------------
+# Generation defaults
+# -----------------------------------------------------------------------
+generation:
+  # Automatically save generated playbooks to the database
+  auto_save: true
+
+  # Default target environment (windows | linux | cloud)
+  default_env: windows
+
+  # Default log sources to pre-select
+  default_sources:
+    - sysmon
+    - wazuh

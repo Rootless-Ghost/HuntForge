@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Playbook Library{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">
+        <span class="title-icon">📚</span>
+        Playbook Library
+    </h1>
+    <p class="page-subtitle">Browse and manage your saved threat hunt playbooks.</p>
+</div>
+
+<!-- Filters -->
+<div class="card filter-card">
+    <div class="filter-row">
+        <input type="text" id="searchInput" class="form-input filter-input"
+               placeholder="Search by technique ID, name, or tactic…">
+        <select id="tacticFilter" class="form-select filter-select">
+            <option value="">All Tactics</option>
+            <option>Initial Access</option>
+            <option>Execution</option>
+            <option>Persistence</option>
+            <option>Privilege Escalation</option>
+            <option>Defense Evasion</option>
+            <option>Credential Access</option>
+            <option>Discovery</option>
+            <option>Lateral Movement</option>
+            <option>Collection</option>
+            <option>Command and Control</option>
+            <option>Exfiltration</option>
+        </select>
+        <button class="btn btn-secondary" id="clearBtn">Clear</button>
+    </div>
+    <div class="filter-stats">
+        <span id="resultCount" class="result-count">Loading…</span>
+        <button class="btn btn-danger btn-sm" id="clearAllBtn">🗑 Clear All</button>
+    </div>
+</div>
+
+<!-- Playbooks table -->
+<div class="card">
+    <div id="loadingState" class="loading-state">
+        <div class="spinner"></div>
+        <span>Loading playbooks…</span>
+    </div>
+    <div id="emptyState" class="empty-state hidden">
+        <div class="empty-icon">📂</div>
+        <h3>No playbooks saved yet</h3>
+        <p>Generate a playbook from the <a href="/">main page</a> to get started.</p>
+    </div>
+    <table id="playbookTable" class="data-table hidden">
+        <thead>
+            <tr>
+                <th>Technique</th>
+                <th>Name</th>
+                <th>Tactic</th>
+                <th>Environment</th>
+                <th>Log Sources</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="playbookTableBody"></tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+<div id="pagination" class="pagination hidden">
+    <button class="btn btn-sm btn-secondary" id="prevPageBtn">← Prev</button>
+    <span id="pageInfo" class="page-info"></span>
+    <button class="btn btn-sm btn-secondary" id="nextPageBtn">Next →</button>
+</div>
+
+<!-- Delete confirm modal -->
+<div id="deleteModal" class="modal-overlay hidden">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Delete Playbook</h3>
+        </div>
+        <div class="modal-body">
+            <p>Are you sure you want to delete this playbook?</p>
+            <p class="modal-detail" id="deleteDetail"></p>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
+            <button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentPage  = 1;
+let totalPages   = 1;
+let pendingDelete = null;
+
+const searchInput = document.getElementById('searchInput');
+const tacticFilter = document.getElementById('tacticFilter');
+
+async function loadPlaybooks(page = 1) {
+    const search = searchInput.value.trim();
+    const tactic = tacticFilter.value;
+
+    const params = new URLSearchParams({
+        page, per_page: 25,
+        search, tactic,
+    });
+
+    document.getElementById('loadingState').classList.remove('hidden');
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('playbookTable').classList.add('hidden');
+
+    try {
+        const resp = await fetch(`/api/playbooks?${params}`);
+        const data = await resp.json();
+
+        document.getElementById('loadingState').classList.add('hidden');
+
+        if (!data.success || data.items.length === 0) {
+            document.getElementById('emptyState').classList.remove('hidden');
+            document.getElementById('resultCount').textContent = '0 playbooks';
+            document.getElementById('pagination').classList.add('hidden');
+            return;
+        }
+
+        currentPage = data.page;
+        totalPages  = data.pages;
+
+        document.getElementById('resultCount').textContent =
+            `${data.total} playbook${data.total !== 1 ? 's' : ''}`;
+
+        const tbody = document.getElementById('playbookTableBody');
+        tbody.innerHTML = '';
+
+        data.items.forEach(pb => {
+            const tr = document.createElement('tr');
+            const sources = Array.isArray(pb.log_sources)
+                ? pb.log_sources.join(', ') : pb.log_sources || '—';
+            const created = pb.created_at
+                ? new Date(pb.created_at).toLocaleDateString() : '—';
+
+            tr.innerHTML = `
+                <td><span class="tech-id-badge">${esc(pb.technique_id)}</span></td>
+                <td class="tech-name-cell">${esc(pb.technique_name)}</td>
+                <td><span class="tactic-tag">${esc(pb.tactic)}</span></td>
+                <td>${esc(pb.environment || 'windows')}</td>
+                <td class="sources-cell">${esc(sources)}</td>
+                <td class="date-cell">${created}</td>
+                <td class="actions-cell">
+                    <a href="/playbook/${esc(pb.id)}" class="btn btn-xs btn-primary">View</a>
+                    <button class="btn btn-xs btn-secondary"
+                            onclick="exportPlaybook('${esc(pb.id)}', 'json')">JSON</button>
+                    <button class="btn btn-xs btn-secondary"
+                            onclick="exportPlaybook('${esc(pb.id)}', 'markdown')">MD</button>
+                    <button class="btn btn-xs btn-danger"
+                            onclick="promptDelete('${esc(pb.id)}', '${esc(pb.technique_id)}')">✕</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('playbookTable').classList.remove('hidden');
+
+        // Pagination
+        const pag = document.getElementById('pagination');
+        if (totalPages > 1) {
+            pag.classList.remove('hidden');
+            document.getElementById('pageInfo').textContent =
+                `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+            document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+        } else {
+            pag.classList.add('hidden');
+        }
+
+    } catch (err) {
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('emptyState').classList.remove('hidden');
+        console.error(err);
+    }
+}
+
+function esc(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function exportPlaybook(id, fmt) {
+    window.location.href = `/api/playbook/${id}/export?format=${fmt}`;
+}
+
+function promptDelete(id, techId) {
+    pendingDelete = id;
+    document.getElementById('deleteDetail').textContent = `Playbook for ${techId}`;
+    document.getElementById('deleteModal').classList.remove('hidden');
+}
+
+document.getElementById('cancelDeleteBtn').addEventListener('click', () => {
+    document.getElementById('deleteModal').classList.add('hidden');
+    pendingDelete = null;
+});
+
+document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+    if (!pendingDelete) return;
+    try {
+        await fetch(`/api/playbook/${pendingDelete}`, { method: 'DELETE' });
+        document.getElementById('deleteModal').classList.add('hidden');
+        pendingDelete = null;
+        loadPlaybooks(currentPage);
+    } catch (err) {
+        console.error(err);
+    }
+});
+
+document.getElementById('clearAllBtn').addEventListener('click', () => {
+    if (!confirm('Delete ALL saved playbooks? This cannot be undone.')) return;
+    // Delete all by fetching the list and deleting each
+    fetch('/api/playbooks?per_page=200')
+        .then(r => r.json())
+        .then(async data => {
+            for (const pb of data.items) {
+                await fetch(`/api/playbook/${pb.id}`, { method: 'DELETE' });
+            }
+            loadPlaybooks(1);
+        });
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+    searchInput.value = '';
+    tacticFilter.value = '';
+    loadPlaybooks(1);
+});
+
+document.getElementById('prevPageBtn').addEventListener('click', () => {
+    if (currentPage > 1) loadPlaybooks(currentPage - 1);
+});
+document.getElementById('nextPageBtn').addEventListener('click', () => {
+    if (currentPage < totalPages) loadPlaybooks(currentPage + 1);
+});
+
+let searchTimer;
+searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadPlaybooks(1), 400);
+});
+tacticFilter.addEventListener('change', () => loadPlaybooks(1));
+
+// Initial load
+loadPlaybooks(1);
+</script>
+{% endblock %}

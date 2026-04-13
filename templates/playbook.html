@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block title %}{{ playbook.technique_id }} — {{ playbook.technique_name }}{% endblock %}
+
+{% block content %}
+{% set pb = playbook %}
+{% set conf = pb.confidence %}
+{% set mc = pb.mitre_context %}
+
+<div class="page-header">
+    <a href="/library" class="back-link">← Back to Library</a>
+    <h1 class="page-title">
+        <span class="tech-id-lg">{{ pb.technique_id }}</span>
+        {{ pb.technique_name }}
+    </h1>
+    <div class="page-meta">
+        <span class="badge badge-tactic">{{ pb.tactic }}</span>
+        <span class="confidence-badge conf-{{ conf.label.lower().replace(' ', '-') }}">
+            {{ conf.label }} ({{ conf.adjusted_score }}/10)
+        </span>
+        <span class="meta-date">Generated: {{ pb.generated_at[:10] if pb.generated_at else '' }}</span>
+    </div>
+</div>
+
+<!-- Export buttons -->
+<div class="export-bar card">
+    <span class="export-label">Export this playbook:</span>
+    <a href="/api/playbook/{{ pb.id }}/export?format=json" class="btn btn-sm btn-secondary">⬇ JSON</a>
+    <a href="/api/playbook/{{ pb.id }}/export?format=markdown" class="btn btn-sm btn-secondary">⬇ Markdown</a>
+    <button class="btn btn-sm btn-outline" onclick="window.print()">🖨 Print</button>
+</div>
+
+<!-- Confidence bar -->
+<div class="confidence-card card">
+    <div class="confidence-row">
+        <div class="confidence-label">
+            <span>Detection Confidence</span>
+            <span class="confidence-value">{{ conf.adjusted_score }}/10</span>
+        </div>
+        <div class="confidence-bar-wrap">
+            <div class="confidence-bar" style="width: {{ conf.adjusted_score * 10 }}%; background: {{ 'var(--accent-green)' if conf.adjusted_score >= 7 else ('var(--accent-yellow)' if conf.adjusted_score >= 5 else 'var(--accent-red)') }};"></div>
+        </div>
+        <div class="confidence-meta">
+            <span class="conf-coverage">Log coverage: {{ conf.source_coverage }}%</span>
+            <span class="conf-label-badge conf-{{ conf.label.lower().replace(' ', '-') }}">{{ conf.label }}</span>
+        </div>
+    </div>
+    <div class="confidence-rationale">{{ conf.rationale }}</div>
+</div>
+
+<!-- Tabs -->
+<div class="tab-container">
+    <div class="tab-bar">
+        <button class="tab-btn active" data-tab="sp-overview">📋 Overview</button>
+        <button class="tab-btn" data-tab="sp-queries">🔍 Queries</button>
+        <button class="tab-btn" data-tab="sp-artifacts">🎯 Artifacts</button>
+        <button class="tab-btn" data-tab="sp-mitre">🧭 MITRE Context</button>
+        <button class="tab-btn" data-tab="sp-logsources">📡 Log Sources</button>
+    </div>
+
+    <!-- Overview -->
+    <div class="tab-content active" id="tab-sp-overview">
+        <div class="tab-section">
+            <h3 class="section-title">Description</h3>
+            <p class="text-body">{{ pb.description }}</p>
+        </div>
+        <div class="tab-section">
+            <h3 class="section-title">Hunt Hypothesis</h3>
+            <div class="hypothesis-block">{{ pb.hypothesis | replace('\n\n', '</p><p>') | safe }}</div>
+        </div>
+    </div>
+
+    <!-- Queries -->
+    <div class="tab-content" id="tab-sp-queries">
+        <div class="query-grid">
+
+            <div class="query-block">
+                <div class="query-header">
+                    <span class="query-badge splunk">Splunk SPL</span>
+                    <button class="copy-btn" onclick="copyText(this, 'splunk-code')">Copy</button>
+                </div>
+                <pre class="query-code" id="splunk-code">{{ pb.queries.splunk }}</pre>
+            </div>
+
+            <div class="query-block">
+                <div class="query-header">
+                    <span class="query-badge wazuh">Wazuh / Elasticsearch</span>
+                    <button class="copy-btn" onclick="copyText(this, 'wazuh-code')">Copy</button>
+                </div>
+                <pre class="query-code" id="wazuh-code">{{ pb.queries.wazuh | tojson(indent=2) }}</pre>
+            </div>
+
+            <div class="query-block">
+                <div class="query-header">
+                    <span class="query-badge sigma">Sigma YAML</span>
+                    <button class="copy-btn" onclick="copyText(this, 'sigma-code')">Copy</button>
+                </div>
+                <pre class="query-code" id="sigma-code">{{ pb.queries.sigma }}</pre>
+            </div>
+
+            <div class="query-block">
+                <div class="query-header">
+                    <span class="query-badge kql">KQL (Sentinel)</span>
+                    <button class="copy-btn" onclick="copyText(this, 'kql-code')">Copy</button>
+                </div>
+                <pre class="query-code" id="kql-code">{{ pb.queries.kql }}</pre>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Artifacts -->
+    <div class="tab-content" id="tab-sp-artifacts">
+        <div class="artifacts-grid">
+
+            <div class="artifact-card">
+                <h4 class="artifact-title">Windows Event IDs</h4>
+                {% for eid in pb.artifacts.event_ids %}
+                <div class="artifact-item">
+                    <span class="artifact-code">{{ eid }}</span>
+                    <span class="artifact-desc">{{ pb.artifacts.raw_artifacts.event_ids | default([], true) | selectattr('__class__.__name__', 'eq', 'str') | list }}</span>
+                </div>
+                {% else %}
+                <div class="artifact-empty">No specific Event IDs identified.</div>
+                {% endfor %}
+            </div>
+
+            <div class="artifact-card">
+                <h4 class="artifact-title">Key Field Names</h4>
+                {% for f in pb.artifacts.field_names %}
+                <span class="artifact-tag">{{ f }}</span>
+                {% else %}
+                <div class="artifact-empty">No specific fields identified.</div>
+                {% endfor %}
+            </div>
+
+            <div class="artifact-card">
+                <h4 class="artifact-title">Processes of Interest</h4>
+                {% for p in pb.artifacts.processes %}
+                <div class="artifact-item">
+                    <span class="artifact-code process-name">{{ p }}</span>
+                </div>
+                {% else %}
+                <div class="artifact-empty">No specific processes identified.</div>
+                {% endfor %}
+            </div>
+
+            <div class="artifact-card">
+                <h4 class="artifact-title">Command Patterns</h4>
+                {% for c in pb.artifacts.command_patterns %}
+                <div class="artifact-item cmd-item">
+                    <span class="artifact-code">{{ c }}</span>
+                </div>
+                {% else %}
+                <div class="artifact-empty">No specific command patterns identified.</div>
+                {% endfor %}
+            </div>
+
+            <div class="artifact-card">
+                <h4 class="artifact-title">Registry Keys</h4>
+                {% for r in pb.artifacts.registry_keys %}
+                <div class="artifact-item">
+                    <span class="artifact-code reg-key">{{ r }}</span>
+                </div>
+                {% else %}
+                <div class="artifact-empty">No registry keys identified for this technique.</div>
+                {% endfor %}
+            </div>
+
+            <div class="artifact-card">
+                <h4 class="artifact-title">Network Ports</h4>
+                {% for port in pb.artifacts.network_ports %}
+                <div class="artifact-item">
+                    <span class="artifact-code port-num">{{ port }}</span>
+                </div>
+                {% else %}
+                <div class="artifact-empty">No specific network ports identified.</div>
+                {% endfor %}
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MITRE Context -->
+    <div class="tab-content" id="tab-sp-mitre">
+        <div class="mitre-layout">
+
+            <div class="mitre-card">
+                <h4 class="mitre-section-title">Tactic</h4>
+                <div class="mitre-info">
+                    <a href="{{ mc.tactic_url }}" target="_blank" class="mitre-link">
+                        {{ mc.tactic_id }} — {{ mc.tactic_name }}
+                    </a>
+                    {% if mc.parent_id %}
+                    <div class="mitre-parent">
+                        Parent: <a href="https://attack.mitre.org/techniques/{{ mc.parent_id }}/" target="_blank">{{ mc.parent_id }}</a>
+                    </div>
+                    {% endif %}
+                    <div class="mitre-attck-link">
+                        <a href="{{ mc.technique_url }}" target="_blank" class="mitre-link">
+                            View on MITRE ATT&CK →
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mitre-card">
+                <h4 class="mitre-section-title">Sub-Techniques ({{ mc.sub_techniques | length }})</h4>
+                {% if mc.sub_techniques %}
+                <div class="mitre-list">
+                    {% for st in mc.sub_techniques %}
+                    <div class="mitre-item">
+                        <span class="mitre-id">{{ st.id }}</span>
+                        <span class="mitre-name">{{ st.name }}</span>
+                        {% if st.description %}
+                        <div class="mitre-desc">{{ st.description[:150] }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="artifact-empty">No sub-techniques for this entry.</div>
+                {% endif %}
+            </div>
+
+            <div class="mitre-card">
+                <h4 class="mitre-section-title">Related Techniques ({{ mc.related_techniques | length }})</h4>
+                {% if mc.related_techniques %}
+                <div class="mitre-list">
+                    {% for rt in mc.related_techniques %}
+                    <div class="mitre-item">
+                        <span class="mitre-id">{{ rt.id }}</span>
+                        <span class="mitre-name">{{ rt.name }}</span>
+                        {% if rt.tactic %}
+                        <span class="mitre-tactic-tag">{{ rt.tactic }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="artifact-empty">No related techniques listed.</div>
+                {% endif %}
+            </div>
+
+            <div class="mitre-card mitre-card--full">
+                <h4 class="mitre-section-title">Detection Notes</h4>
+                <div class="detection-notes">{{ mc.detection_notes }}</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Log Sources -->
+    <div class="tab-content" id="tab-sp-logsources">
+        <div class="logsources-list">
+            {% for src in pb.suggested_log_sources %}
+            <div class="logsource-item priority-{{ src.priority }}">
+                <div class="logsource-priority {{ src.priority }}">{{ src.priority.upper() }}</div>
+                <div class="logsource-content">
+                    <div class="logsource-name">{{ src.name }}</div>
+                    <div class="logsource-desc">{{ src.description }}</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="artifact-empty">No log source recommendations available.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function copyText(btn, elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            btn.textContent = orig;
+            btn.classList.remove('copied');
+        }, 1500);
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = el.textContent;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+}
+
+// Tab switching
+document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tabId = btn.getAttribute('data-tab');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        const target = document.getElementById('tab-' + tabId);
+        if (target) target.classList.add('active');
+    });
+});
+</script>
+{% endblock %}
