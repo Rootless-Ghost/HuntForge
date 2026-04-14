@@ -237,8 +237,7 @@ def api_export(playbook_id: str):
     filename = f"huntforge_{tid}_{name}"
 
     if fmt == "markdown":
-        from core.engine import PlaybookEngine as PE
-        md = _engine._to_markdown(playbook)
+        md = _engine.to_markdown(playbook)
         md_bytes = md.encode("utf-8")
         import io
         return send_file(

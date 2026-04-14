@@ -262,13 +262,13 @@ class PlaybookEngine:
         )
 
         if output_format == "markdown":
-            playbook["markdown"] = self._to_markdown(playbook)
+            playbook["markdown"] = self.to_markdown(playbook)
 
         return playbook
 
     # ── Markdown export ────────────────────────────────────────────────────────
 
-    def _to_markdown(self, playbook: dict) -> str:
+    def to_markdown(self, playbook: dict) -> str:
         tid   = playbook["technique_id"]
         name  = playbook["technique_name"]
         tactic = playbook["tactic"]
