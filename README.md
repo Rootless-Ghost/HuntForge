@@ -33,10 +33,17 @@ Input a MITRE ATT&CK technique ID → output a complete, analyst-ready hunt play
 ![Generated Playbook Detail](docs/HuntForge-PLaybook-Queries.png)
 *Splunk SPL, Wazuh JSON, Sigma YAML, and KQL queries with artifact and MITRE context panels*
 
-### Playbook Library
+### Playbook-Artifacts
 
-![Playbook Library](docs/screenshots/playbook-library.png)
-*Browse, filter by tactic, search, and export saved playbooks*
+![Playbook-Artifacts](docs/HuntForge-Playbook-Artifacts.png)
+
+### Playbook-MITRE
+
+![Playbook-MITRE](docs/HuntForge-Playbook-MITRE.png)
+
+### Playbook-MITRE
+
+![Playbook-Log Sources](docs/Huntforge-Playbook-LogS.png)
 
 ---
 
