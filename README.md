@@ -25,7 +25,7 @@ Input a MITRE ATT&CK technique ID → output a complete, analyst-ready hunt play
 
 ### Playbook Generator
 
-![Playbook Generator](docs/screenshots/playbook-generator.png)
+![Playbook Generator](docs/HuntForge-PlaybookGen.png)
 *Enter a technique ID and log sources — playbook generates instantly, fully offline*
 
 ### Generated Playbook Detail
