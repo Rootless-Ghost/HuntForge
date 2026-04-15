@@ -18,6 +18,11 @@ Input a MITRE ATT&CK technique ID → output a complete, analyst-ready hunt play
 
 ## Screenshots
 
+### Dashboard 
+
+![HuntForge Dashboard](docs/HuntForge-Dashboard.png)
+
+
 ### Playbook Generator
 
 ![Playbook Generator](docs/screenshots/playbook-generator.png)
