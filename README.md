@@ -16,7 +16,7 @@ Input a MITRE ATT&CK technique ID → output a complete, analyst-ready hunt play
 
 ![Nebula Forge pipeline — HuntForge highlighted](docs/pipeline.svg)
 
-> **purple-loop:** `AtomicLoop → LogNorm → ClusterIQ → HuntForge → DriftWatch → repeat`
+> **purple-loop:** `AtomicLoop → LogNorm → ClusterIQ → DriftWatch → HuntForge → repeat`
 
 ---
 
