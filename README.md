@@ -45,7 +45,7 @@ Input a MITRE ATT&CK technique ID → output a complete, analyst-ready hunt play
 
 ![Playbook-MITRE](docs/HuntForge-Playbook-MITRE.png)
 
-### Playbook-MITRE
+### Playbook-Log Sources
 
 ![Playbook-Log Sources](docs/Huntforge-Playbook-LogS.png)
 
