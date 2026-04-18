@@ -1,64 +1,32 @@
 """
-HuntForge — SQLite storage layer
+HuntForge — PostgreSQL storage layer.
+
+Schema is managed externally via init-db/. Table expected: huntforge_playbooks
 """
 
 import json
 import logging
 import os
-import sqlite3
 import uuid
 from datetime import datetime
+
+import psycopg2
+import psycopg2.extras
 
 logger = logging.getLogger("huntforge.storage")
 
 
 class PlaybookStorage:
-    """Manages the SQLite database for saved playbooks."""
 
     def __init__(self, db_path: str = "./huntforge.db"):
-        self.db_path = db_path
-        self._init_db()
+        self._url = os.environ.get("DATABASE_URL") or db_path
 
-    # ── Schema ─────────────────────────────────────────────────────────────────
-
-    def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    def _init_db(self) -> None:
-        with self._get_conn() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS playbooks (
-                    id            TEXT PRIMARY KEY,
-                    technique_id  TEXT NOT NULL,
-                    technique_name TEXT NOT NULL,
-                    tactic        TEXT NOT NULL,
-                    environment   TEXT NOT NULL DEFAULT 'windows',
-                    log_sources   TEXT NOT NULL DEFAULT '[]',
-                    playbook_json TEXT NOT NULL,
-                    created_at    TEXT NOT NULL
-                )
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_technique_id
-                ON playbooks (technique_id)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_tactic
-                ON playbooks (tactic)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_created_at
-                ON playbooks (created_at)
-            """)
-            conn.commit()
-        logger.info("Storage initialised: %s", self.db_path)
+    def _get_conn(self):
+        return psycopg2.connect(self._url)
 
     # ── Write ──────────────────────────────────────────────────────────────────
 
     def save_playbook(self, playbook: dict) -> dict:
-        """Persist a playbook. Generates a new ID; returns the saved record."""
         playbook_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat() + "Z"
 
@@ -66,24 +34,25 @@ class PlaybookStorage:
         env = playbook.get("context", {}).get("environment", "windows")
 
         with self._get_conn() as conn:
-            conn.execute(
-                """
-                INSERT INTO playbooks
-                    (id, technique_id, technique_name, tactic,
-                     environment, log_sources, playbook_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    playbook_id,
-                    playbook.get("technique_id", ""),
-                    playbook.get("technique_name", ""),
-                    playbook.get("tactic", ""),
-                    env,
-                    json.dumps(log_sources),
-                    json.dumps(playbook),
-                    now,
-                ),
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO huntforge_playbooks
+                        (id, technique_id, technique_name, tactic,
+                         environment, log_sources, playbook_json, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        playbook_id,
+                        playbook.get("technique_id", ""),
+                        playbook.get("technique_name", ""),
+                        playbook.get("tactic", ""),
+                        env,
+                        json.dumps(log_sources),
+                        json.dumps(playbook),
+                        now,
+                    ),
+                )
             conn.commit()
 
         playbook["id"] = playbook_id
@@ -95,9 +64,11 @@ class PlaybookStorage:
 
     def get_playbook(self, playbook_id: str) -> dict | None:
         with self._get_conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM playbooks WHERE id = ?", (playbook_id,)
-            ).fetchone()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT * FROM huntforge_playbooks WHERE id = %s", (playbook_id,)
+                )
+                row = cur.fetchone()
         if row is None:
             return None
         data = json.loads(row["playbook_json"])
@@ -117,16 +88,16 @@ class PlaybookStorage:
         params: list = []
 
         if tactic:
-            conditions.append("LOWER(tactic) LIKE LOWER(?)")
+            conditions.append("LOWER(tactic) LIKE LOWER(%s)")
             params.append(f"%{tactic}%")
         if technique_id:
-            conditions.append("LOWER(technique_id) LIKE LOWER(?)")
+            conditions.append("LOWER(technique_id) LIKE LOWER(%s)")
             params.append(f"%{technique_id}%")
         if search:
             conditions.append(
-                "(LOWER(technique_id) LIKE LOWER(?)"
-                " OR LOWER(technique_name) LIKE LOWER(?)"
-                " OR LOWER(tactic) LIKE LOWER(?))"
+                "(LOWER(technique_id) LIKE LOWER(%s)"
+                " OR LOWER(technique_name) LIKE LOWER(%s)"
+                " OR LOWER(tactic) LIKE LOWER(%s))"
             )
             params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
@@ -134,19 +105,20 @@ class PlaybookStorage:
         offset = (page - 1) * per_page
 
         with self._get_conn() as conn:
-            total = conn.execute(
-                f"SELECT COUNT(*) FROM playbooks {where}", params
-            ).fetchone()[0]
-            rows = conn.execute(
-                f"""
-                SELECT id, technique_id, technique_name, tactic,
-                       environment, log_sources, created_at
-                FROM playbooks {where}
-                ORDER BY created_at DESC
-                LIMIT ? OFFSET ?
-                """,
-                params + [per_page, offset],
-            ).fetchall()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(f"SELECT COUNT(*) FROM huntforge_playbooks {where}", params)
+                total = cur.fetchone()["count"]
+                cur.execute(
+                    f"""
+                    SELECT id, technique_id, technique_name, tactic,
+                           environment, log_sources, created_at
+                    FROM huntforge_playbooks {where}
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params + [per_page, offset],
+                )
+                rows = cur.fetchall()
 
         items = []
         for r in rows:
@@ -172,14 +144,18 @@ class PlaybookStorage:
 
     def delete_playbook(self, playbook_id: str) -> bool:
         with self._get_conn() as conn:
-            cur = conn.execute(
-                "DELETE FROM playbooks WHERE id = ?", (playbook_id,)
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM huntforge_playbooks WHERE id = %s", (playbook_id,)
+                )
+                deleted = cur.rowcount > 0
             conn.commit()
-        return cur.rowcount > 0
+        return deleted
 
     def clear_all(self) -> int:
         with self._get_conn() as conn:
-            cur = conn.execute("DELETE FROM playbooks")
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM huntforge_playbooks")
+                count = cur.rowcount
             conn.commit()
-        return cur.rowcount
+        return count
