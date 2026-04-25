@@ -21,6 +21,7 @@ import yaml
 from flask import Flask, jsonify, render_template, request, send_file
 
 from core.engine import PlaybookEngine
+from core.mitre_data import TECHNIQUES
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -273,6 +274,7 @@ def api_enrich():
         return jsonify({"success": False, "error": "No events provided"}), 400
 
     # Heuristic: look for technique IDs in event fields or tags
+    _technique_ids_lower = {tid.lower(): tid for tid in TECHNIQUES}
     seen_techniques = set()
     for event in events[:50]:  # cap at 50 events
         tags = event.get("tags") or []
@@ -283,13 +285,12 @@ def api_enrich():
         for field in ("process.command_line", "CommandLine", "message"):
             val = event.get(field, "")
             if val:
-                from core.mitre_data import TECHNIQUES
-                for tid in TECHNIQUES:
-                    if tid.lower() in val.lower():
+                val_lower = val.lower()
+                for tid_lower, tid in _technique_ids_lower.items():
+                    if tid_lower in val_lower:
                         seen_techniques.add(tid)
 
     suggestions = []
-    from core.mitre_data import TECHNIQUES
     for tid in list(seen_techniques)[:10]:
         tech = TECHNIQUES.get(tid)
         if tech:
